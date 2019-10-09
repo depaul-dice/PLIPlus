@@ -300,9 +300,8 @@ class IBPlusTree():
                     leftLeaf.ongoing[i] = 0
                     self.mergeInterval(leftLeaf, i)
             leftLeaf = leftLeaf.sibling
-        result = Constants.ERROR
         #Rebuild the tree from leaves
-        self.reBuild()
+        result = self.reBuild()
         return result
 
     def splitInterval(self, leaf, pos):
