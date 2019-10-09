@@ -22,6 +22,10 @@ class IBPlusTree():
         self.ibPlusMetaData = "ibPlusTreeMD.dat"
         self.ibPlusBuffer = IBPlusDataBuffer(self.ibPlusDataBase)
 
+        self.cntTuples = 0 #Count number of tuples for purpose of reshape
+        self.curLoad = Constants.INIT_LOAD
+        self.cntInterval = 0
+
         # WriteMetaData
         self.nextPositionIndex = -1
         self.pointerStack = Stack()
@@ -59,6 +63,9 @@ class IBPlusTree():
         #if(result == Constants.OVERFLOW):
         #    #Insert new node, create new root and return success
         #    result = Constants.SUCCESS
+        self.cntTuples += 1
+        if(self.cntTuples == Constants.RESHAPE_LIMIT):
+            self.reShape() # Reshape IBPlusTree
         return result
 
     def insertTupleRec(self, curNode, _key, _tuple):
@@ -79,6 +86,8 @@ class IBPlusTree():
                 tuple = self.ibPlusBuffer.createTuple(_key, _tuple)
             curNode.data[goodPlace][curNode.count[goodPlace]] = tuple
             curNode.count[goodPlace] += 1
+
+            curNode.dis[goodPlace] += 1
             result = Constants.SUCCESS
             if(curNode.interval[goodPlace][Constants.HIGH] < _key):
                 curNode.interval[goodPlace][Constants.HIGH] = _key
@@ -241,15 +250,232 @@ class IBPlusTree():
 
     ##############<reShape the IB+-Tree>##############
     def reShape(self):
-        # TODO: reshape the IB+-Tree
-        # - I. Adjusting: (i.e., merge or split nodes)
-        #   + 1. The local intervals
-        #   + 2. The number of entries or the length of node
-        # - II. Adjusting: (i.e., overflow or underflow nodes)
-        #   + 1. The parent's intervals
-        #   + 2. The height of IB+-Tree
+        # DONE:
+        # I. build the sibling link for the leaf-level ---> OK (linkLeaves)
+        # II. Build a function to rebuild the tree from leaves ---> Ok (reBuild)
+        # III. Extend the node to store the distribution ---> OK (dis attr.)
+        #   1. How would you store the distribution?
+        #   with distribution attribute in nonleaf-node
+        #   increase whenever a tuple is inserted
+        # IV. Build a function to record the current and on-going ditribution
+        # as well as periorly launch the reShape function ---> OK (reShape)
+                #1. record the data distribution? ---> OK (see above)
+                #2. Accumulate the current distribution to the on-going distribution
+                # Add (i) ongoing attribute and (ii) load attribute
+                #3. Global distribution
+
+        if(self.rootNode is None):
+            return Constants.ERROR
+        leftLeaf = self.rootNode
+        while(not leftLeaf.isLeaf()):
+            leftLeaf = leftLeaf.pointer[0]
+        #Phase 1: Accumulate the current distribution to on-going distribution
+        while (leftLeaf is not None):
+            for i in range(0, len(leftLeaf.interval)): #(0, MAX_NUM_L_ENTRY)
+                leftLeaf.ongoing[i] = (leftLeaf.ongoing[i] * leftLeaf.oLoad[i] +
+                leftLeaf.dis[i] * Constants.RESHAPE_LIMIT)/(leftLeaf.oLoad[i] + Constants.RESHAPE_LIMIT)
+                leftLeaf.oLoad[i] += Constants.RESHAPE_LIMIT
+                leftLeaf.dis[i] = 0
+            leftLeaf = leftLeaf.sibling
+        #Phase 2: Commit the on-going milestones to global milestones, tune
+        #   the global milestones if necessary
+        leftLeaf = self.rootNode
+        while(not leftLeaf.isLeaf()):
+            leftLeaf = leftLeaf.pointer[0]
+        while(leftLeaf is not None):
+            for i in range(0, len(leftLeaf.interval)): #(0, MAX_NUM_L_ENTRY)
+                if(self.checkInterval(leftLeaf, i) >= Constants.PHI_MAX):
+                    leftLeaf.gDis[i] = (leftLeaf.gDis[i] * leftLeaf.gLoad[i] +
+                    leftLeaf.ongoing[i] * leftLeaf.oLoad[i])/(leftLeaf.gDis[i] + leftLeaf.oLoad[i])
+                    leftLeaf.gLoad[i] += leftLeaf.oLoad[i]
+                    leftLeaf.oLoad[i] = 0
+                    leftLeaf.ongoing[i] = 0
+                    self.splitInterval(leftLeaf, i)
+                    i += 1
+                elif(self.checkInterval(leftLeaf, i) <= Constants.PHI_MIN):
+                    leftLeaf.gDis[i] = (leftLeaf.gDis[i] * leftLeaf.gLoad[i] +
+                    leftLeaf.ongoing[i] * leftLeaf.oLoad[i])/(leftLeaf.gDis[i] + leftLeaf.oLoad[i])
+                    leftLeaf.gLoad[i] += leftLeaf.oLoad[i]
+                    leftLeaf.oLoad[i] = 0
+                    leftLeaf.ongoing[i] = 0
+                    self.mergeInterval(leftLeaf, i)
+            leftLeaf = leftLeaf.sibling
         result = Constants.ERROR
+        #Rebuild the tree from leaves
+        self.reBuild()
         return result
+
+    def splitInterval(self, leaf, pos):
+        leaf.interval.insert(pos, [0.0, 0.0])
+        leaf.interval[pos][Constants.LOW] = leaf.interval[pos + 1][Constants.LOW]
+        leaf.interval[pos][Constants.HIGH] = (leaf.interval[pos + 1][Constants.LOW] + leaf.interval[pos + 1][Constants.HIGH])/2
+        leaf.interval[pos + 1][Constants.LOW] = leaf.interval[pos][Constants.HIGH]
+        #leaf.interval[pos + 1][Constants.HIGH] = leaf.interval[pos + 1][Constants.HIGH]
+
+        leaf.data.insert(pos, [None for x in range(0, Constants.NUM_ROW_PER_BUCKET)])
+        leaf.count.insert(pos, 0)
+        leaf.dis.insert(pos, 0.0)
+
+        leaf.ongoing.insert(pos, 0.0)
+        leaf.ongoing[pos] = leaf.ongoing[pos + 1] / 2
+        leaf.ongoing[pos + 1] = leaf.ongoing[pos + 1] / 2
+        leaf.oLoad.insert(pos, 0.0)
+        leaf.oLoad[pos] = leaf.oLoad[pos + 1] / 2
+        leaf.oLoad[pos + 1] = leaf.oLoad[pos + 1] / 2
+
+        leaf.gDis.insert(pos, 0.0)
+        leaf.gDis[pos] = leaf.gDis[pos + 1] / 2
+        leaf.gDis[pos + 1] = leaf.gDis[pos + 1] / 2
+        leaf.gLoad.insert(pos, 0.0)
+        leaf.gLoad[pos] = leaf.gLoad[pos + 1] / 2
+        leaf.gLoad[pos + 1] = leaf.gLoad[pos + 1] / 2
+        return Constants.SUCCESS
+
+    def mergeInterval(self, leaf, pos):
+        sel = pos
+        if (pos == 0):
+            sel = pos + 1
+        elif (pos == Constants.MAX_NUM_L_ENTRY - 1):
+            sel = pos - 1
+        else:
+            if(leaf.gDis[pos - 1]/leaf.gLoad[pos - 1] > leaf.gDis[pos + 1]/leaf.gLoad[pos + 1]):
+                sel = pos + 1
+            else:
+                sel = pos - 1
+        if(sel > pos):
+            leaf.interval[sel][Constants.LOW] = leaf.interval[pos][Constants.LOW]
+        else:
+            leaf.interval[sel][Constants.HIGH] = leaf.interval[pos][Constants.HIGH]
+        leaf.interval.pop(pos)
+        leaf.data.pop(pos)
+        leaf.count.pop(pos)
+        leaf.dis.pop(pos)
+
+        leaf.ongoing[sel] += leaf.ongoing[pos]
+        leaf.ongoing.pop(pos)
+        leaf.oLoad[sel] += leaf.oLoad[pos]
+        leaf.oLoad.pop(pos)
+        leaf.gDis[sel] += leaf.gDis[pos]
+        leaf.gDis.pop(pos)
+        leaf.gLoad[sel] += leaf.gLoad[pos]
+        leaf.gLoad.pop(pos)
+        return Constants.SUCCESS
+
+    def checkInterval(self, node, pos):
+        avg_dis = self.curLoad/self.cntInterval
+        result = (node.ongoing[pos] * node.oLoad[pos] +
+        node.gDis[pos] * node.gLoad[pos]) / (self.curLoad * avg_dis)
+        return result
+
+    #Link all leaves together with sibling link
+    def linkLeaves(self):
+        if(self.rootNode is None):
+            return Constants.ERROR
+
+        queue = []
+        queue.append(self.rootNode)
+        leftSibling = None
+        while(len(queue) > 0):
+            curNode = queue.pop()
+            if(curNode.isLeaf()):
+                if(leftSibling is not None):
+                    leftSibling.sibling = curNode
+                leftSibling = curNode
+            else:
+                for i in range(0, curNode.length):
+                    queue.append(curNode.pointer[i])
+        return Constants.SUCCESS
+
+    def countNumInterval(self):
+        if(self.rootNode is None):
+            return Constants.ERROR
+        count = 0
+        leftLeaf = self.rootNode
+        while(not leftLeaf.isLeaf()):
+            leftLeaf = leftLeaf.pointer[0]
+        while (leftLeaf is not None):
+            count += len(leftLeaf.interval)
+            leftLeaf = leftLeaf.sibling
+        self.cntInterval = count
+        return Constants.SUCCESS
+
+    def initGlobalDistribution(self):
+        if(self.rootNode is None):
+            return Constants.ERROR
+        count = 0
+        leftLeaf = self.rootNode
+        while(not leftLeaf.isLeaf()):
+            leftLeaf = leftLeaf.pointer[0]
+        avg_dis = Constants.INIT_LOAD / self.cntInterval
+        while (leftLeaf is not None):
+            for i in range(0, len(leftLeaf.interval)):
+                leftLeaf.gDis[i] = avg_dis
+            leftLeaf = leftLeaf.sibling
+        return Constants.SUCCESS
+    #Rebuild the IB+-Tree from leaves
+    def reBuild(self):
+        #1. Go to the leftLeaf of the tree
+        if(self.rootNode is None):
+            return Constants.ERROR
+        leftLeaf = self.rootNode
+        while(not leftLeaf.isLeaf()):
+            leftLeaf = leftLeaf.pointer[0]
+        #2. Build the tree from this leaf
+        #2.1 Rebuild the leaves
+        leavesQueue = []
+        aLeaf = newIBPlusNode(True)
+        curIndex = 0
+        MaxLen = Constants.MAX_NUM_L_ENTRY
+        while(leftLeaf is not None):
+            curPos = 0
+            curLength = len(leftLeaf.interval)
+            while(curPos < curLength):
+                if((MaxLen - curIndex) > (curLength - curPos)):
+                    copyLeafInterval_Dis(aLeaf, curIndex, leftLeaf, curPos, (curLength - curPos))
+                    curIndex += curLength - curPos
+                    curPos = curLength #Exit while and go for the next leaf
+                else:
+                    copyLeafInterval_Dis(aLeaf, curIndex, leftLeaf, curPos, (MaxLen - curIndex))
+                    curPos += MaxLen - curIndex
+                    curIndex = MaxLen #current leaf is full, add to queue
+                    leavesQueue.append(aLeaf)
+                    aLeaf = newIBPlusNode(True)
+                    curIndex = 0
+
+            leftLeaf = leftLeaf.sibling
+        #2.2 Rebuild the rood from leaves
+        curLevel = 0
+        curIndex = 0
+        MaxLen = Constants.MAX_NUM_NL_ENTRY
+        aNode = newIBPlusNode(False)
+        curNode = None
+        while(len(leavesQueue) > 0):
+            curNode = leavesQueue.pop(0)
+            if(curNode.level > curLevel):
+                leavesQueue.insert(0, curNode)
+                leavesQueue.append(aNode)
+                aNode = newIBPlusNode(False)
+                curIndex = 0
+                curLevel = curNode.level
+                continue
+            if(curIndex == 0):
+                aNode.level = curNode.level + 1
+            aNode.interval[curIndex][Constants.LOW] = curNode.interval[0][Constants.LOW]
+            aNode.interval[curIndex][Constants.HIGH] = curNode.interval[len(curNode.interval) - 1][Constants.HIGH]
+            aNode.max[curIndex] = curNode.interval[len(curNode.interval) - 1][Constants.HIGH]
+            aNode.pointer[curIndex] = curNode
+            curIndex += 1
+            if(curIndex == Constants.MAX_NUM_NL_ENTRY):
+                leavesQueue.append(aNode)
+                aNode = newIBPlusNode(False)
+                curIndex = 0
+
+        #3. Update the new root
+        if(curNode is not None):
+            self.rootNode = curNode
+            return Constants.SUCCESS
+        else:
+            return Constants.ERROR
 
     ##############<Copy IBTree Structure>##############
     def copyStructure(self):
@@ -273,6 +499,14 @@ class IBPlusTree():
                 notFound = False
             else:
                 tempNode = tempNode.pointer[0]
+        #Link the leaves together
+        if (result != Constants.ERROR):
+            result = self.linkLeaves()
+        if (result != Constants.ERROR):
+            result = self.countNumInterval()
+        #Initialize the global distribution
+        if(result != Constants.ERROR):
+            result = self.initGlobalDistribution()
         return result
 
     def copyStructureRec(self, curNode, IBNode):

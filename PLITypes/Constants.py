@@ -20,6 +20,10 @@ SUCCESS_CLEAR_MAX = 6
 FUNC_TRUE = True
 FUNC_FALSE = False
 
+RESHAPE_LIMIT = 100000 # limitation to reShape the IBPLusTree
+INIT_LOAD = 5000000 # initial load, suppose that we have 5 mil tuples to initialize the tree
+PHI_MAX = 1.2 # Should be double-checked
+PHI_MIN = 0.6
 #Bucket & Distances
 
 MAX_DISTANCE = 99999.0  #MAX_HIGH
@@ -45,8 +49,8 @@ MAX_NUM_NL_ENTRY = 255
 
 #Buffer
 #MAX_DATA_BUFFER = 800 #800MBls
-MAX_DATA_BUFFER = 100 #200 #1400MB
-MAX_FLUSHING_BUFFER = 20 #200MB
+MAX_DATA_BUFFER = 1400 #100 #200 #
+MAX_FLUSHING_BUFFER = 200# 20
 BUCKET_STARTING_POINT = 50000 #ID starting point
 
 IMPRINTS_MODE = False

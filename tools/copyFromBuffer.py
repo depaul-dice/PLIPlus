@@ -11,6 +11,17 @@ def copyBucketFromBuffer(buffer, node, start, end): #[start, end]
     result = True
     return result
 
+def copyInterval(des, des_Start, src, src_Start, length):
+    for i in range (0, length):
+        assign(des.interval[des_Start + i], src.interval[src_Start + i])
+    return True
+
+def copyLeafInterval_Dis(des, des_Start, src, src_Start, length):
+    for i in range (0, length):
+        assign(des.interval[des_Start + i], src.interval[src_Start + i])
+        des.dis[des_Start + i] = src.dis[src_Start + i]
+    return True
+
 def copyIntervalFromBuffer(buffer, node, start, end): #[start, end]
     index = 0
     for i in range(start, end + 1):
