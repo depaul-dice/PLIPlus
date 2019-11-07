@@ -64,8 +64,9 @@ class IBPlusTree():
         #    #Insert new node, create new root and return success
         #    result = Constants.SUCCESS
         self.cntTuples += 1
-        if(self.cntTuples == Constants.RESHAPE_LIMIT):
-            self.reShape() # Reshape IBPlusTree
+        ##if(self.cntTuples == Constants.RESHAPE_LIMIT):
+        ##    self.reShape() # Reshape IBPlusTree
+        ##    self.cntTuples = 0
         return result
 
     def insertTupleRec(self, curNode, _key, _tuple):
@@ -370,12 +371,13 @@ class IBPlusTree():
     def linkLeaves(self):
         if(self.rootNode is None):
             return Constants.ERROR
-
+        ##pdb.set_trace()
         queue = []
         queue.append(self.rootNode)
         leftSibling = None
         while(len(queue) > 0):
             curNode = queue.pop()
+            ##pdb.set_trace()
             if(curNode.isLeaf()):
                 if(leftSibling is not None):
                     leftSibling.sibling = curNode
@@ -443,6 +445,7 @@ class IBPlusTree():
 
             leftLeaf = leftLeaf.sibling
         #2.2 Rebuild the rood from leaves
+        ##pdb.set_trace()
         curLevel = 0
         curIndex = 0
         MaxLen = Constants.MAX_NUM_NL_ENTRY
@@ -451,6 +454,7 @@ class IBPlusTree():
         while(len(leavesQueue) > 0):
             curNode = leavesQueue.pop(0)
             if(curNode.level > curLevel):
+                ##pdb.set_trace()
                 leavesQueue.insert(0, curNode)
                 leavesQueue.append(aNode)
                 aNode = newIBPlusNode(False)
@@ -459,6 +463,7 @@ class IBPlusTree():
                 continue
             if(curIndex == 0):
                 aNode.level = curNode.level + 1
+            ##pdb.set_trace()
             aNode.interval[curIndex][Constants.LOW] = curNode.interval[0][Constants.LOW]
             aNode.interval[curIndex][Constants.HIGH] = curNode.interval[len(curNode.interval) - 1][Constants.HIGH]
             aNode.max[curIndex] = curNode.interval[len(curNode.interval) - 1][Constants.HIGH]
